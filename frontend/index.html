@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Equity Research Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="logo">
+      <span class="logo-mark"></span>
+      <span class="logo-text">EQUITY<span>AI</span></span>
+    </div>
+    <nav>
+      <a href="#how">How it works</a>
+      <a href="https://github.com" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <!-- Hero / input -->
+  <main class="container">
+    <section class="hero">
+      <div class="eyebrow">AI-POWERED EQUITY RESEARCH</div>
+      <h1>Institutional-grade reports.<br/><span class="accent">In 30 seconds.</span></h1>
+      <p class="subtitle">
+        Enter a ticker. A multi-step AI agent fetches financials, builds a DCF model,
+        and writes a full research report — generating a PDF, pitch deck, and Excel model.
+      </p>
+
+      <form id="analyze-form" class="search-bar">
+        <input
+          id="ticker-input"
+          type="text"
+          placeholder="Enter ticker (e.g. AAPL, MSFT, NVDA)"
+          autocomplete="off"
+          autocapitalize="characters"
+          maxlength="10"
+          required
+        />
+        <button type="submit" id="analyze-btn">
+          <span class="btn-text">Analyze</span>
+          <svg class="btn-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M5 12h14M13 5l7 7-7 7"/>
+          </svg>
+        </button>
+      </form>
+
+      <div class="examples">
+        <span>Try:</span>
+        <button class="chip" data-ticker="AAPL">AAPL</button>
+        <button class="chip" data-ticker="MSFT">MSFT</button>
+        <button class="chip" data-ticker="NVDA">NVDA</button>
+        <button class="chip" data-ticker="GOOGL">GOOGL</button>
+        <button class="chip" data-ticker="TSLA">TSLA</button>
+      </div>
+    </section>
+
+    <!-- Loading state -->
+    <section id="loading" class="loading hidden">
+      <div class="spinner"></div>
+      <div class="loading-text">
+        <h3 id="loading-title">Working...</h3>
+        <p id="loading-step">Initializing agent</p>
+      </div>
+      <ol class="agent-steps">
+        <li id="step-1"><span class="dot"></span>Collecting financial data</li>
+        <li id="step-2"><span class="dot"></span>Analyzing business & risks</li>
+        <li id="step-3"><span class="dot"></span>Building DCF valuation</li>
+        <li id="step-4"><span class="dot"></span>Writing recommendation</li>
+      </ol>
+    </section>
+
+    <!-- Error state -->
+    <section id="error" class="error-box hidden">
+      <strong>Error:</strong>
+      <span id="error-msg"></span>
+    </section>
+
+    <!-- Results -->
+    <section id="results" class="results hidden">
+      <!-- Header card -->
+      <div class="result-header">
+        <div>
+          <div class="result-ticker" id="r-ticker">—</div>
+          <div class="result-name" id="r-name">—</div>
+          <div class="result-sector" id="r-sector">—</div>
+        </div>
+        <div class="rec-badge" id="r-badge">
+          <div class="rec-label">RATING</div>
+          <div class="rec-value" id="r-rec">—</div>
+        </div>
+      </div>
+
+      <!-- KPI grid -->
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="kpi-label">Current Price</div>
+          <div class="kpi-value" id="k-current">—</div>
+        </div>
+        <div class="kpi highlight">
+          <div class="kpi-label">DCF Target</div>
+          <div class="kpi-value" id="k-target">—</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Implied Upside</div>
+          <div class="kpi-value" id="k-upside">—</div>
+        </div>
+      </div>
+
+      <!-- Download cards -->
+      <div class="downloads">
+        <a href="#" id="d-pdf" class="dl-card">
+          <div class="dl-icon">📄</div>
+          <div>
+            <div class="dl-title">Research Report</div>
+            <div class="dl-sub">Full PDF • multi-page</div>
+          </div>
+        </a>
+        <a href="#" id="d-deck" class="dl-card">
+          <div class="dl-icon">📊</div>
+          <div>
+            <div class="dl-title">Pitch Deck</div>
+            <div class="dl-sub">PowerPoint • 7 slides</div>
+          </div>
+        </a>
+        <a href="#" id="d-model" class="dl-card">
+          <div class="dl-icon">📈</div>
+          <div>
+            <div class="dl-title">DCF Model</div>
+            <div class="dl-sub">Excel • editable formulas</div>
+          </div>
+        </a>
+      </div>
+
+      <!-- Executive summary -->
+      <div class="card">
+        <h2>Executive Summary</h2>
+        <div class="prose" id="r-summary"></div>
+      </div>
+
+      <!-- Two-col: thesis / risks -->
+      <div class="two-col">
+        <div class="card">
+          <h2 class="green-h">Investment Thesis</h2>
+          <div class="prose" id="r-thesis"></div>
+        </div>
+        <div class="card">
+          <h2 class="red-h">Key Risks</h2>
+          <div class="prose" id="r-risks"></div>
+        </div>
+      </div>
+
+      <!-- Overview & competitive position -->
+      <div class="card">
+        <h2>Business Overview</h2>
+        <div class="prose" id="r-overview"></div>
+      </div>
+      <div class="card">
+        <h2>Competitive Positioning</h2>
+        <div class="prose" id="r-competitive"></div>
+      </div>
+
+      <!-- Agent trace -->
+      <details class="card trace">
+        <summary>Agent execution trace</summary>
+        <ol id="r-log"></ol>
+      </details>
+    </section>
+
+    <!-- How it works -->
+    <section id="how" class="how-section">
+      <h2>How the agent works</h2>
+      <div class="how-grid">
+        <div class="how-step">
+          <div class="how-num">1</div>
+          <h3>Data Collector</h3>
+          <p>Pulls financials, price history, and news from Yahoo Finance for the ticker.</p>
+        </div>
+        <div class="how-step">
+          <div class="how-num">2</div>
+          <h3>Researcher</h3>
+          <p>Gemini analyzes the business model, competitive position, bull case, and risks.</p>
+        </div>
+        <div class="how-step">
+          <div class="how-num">3</div>
+          <h3>Analyst</h3>
+          <p>Builds DCF assumptions grounded in real financials, then computes valuation.</p>
+        </div>
+        <div class="how-step">
+          <div class="how-num">4</div>
+          <h3>Writer</h3>
+          <p>Synthesizes everything into an executive summary and BUY/HOLD/SELL call.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <p>Built with LangGraph, Gemini, FastAPI, and yfinance. <strong>For educational use only — not investment advice.</strong></p>
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
