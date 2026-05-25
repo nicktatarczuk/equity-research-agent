@@ -1,9 +1,7 @@
 // ====== Config ======
 // When running locally: backend on :8000
 // When deployed: change this to your backend URL (e.g. https://your-app.onrender.com)
-const API_BASE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-  ? "http://localhost:8000"
-  : (window.__API_BASE__ || "");  // set window.__API_BASE__ via env at deploy time
+const API_BASE = "https://equity-research-agent-0t0d.onrender.com";  // set window.__API_BASE__ via env at deploy time
 
 // ====== DOM ======
 const form = document.getElementById("analyze-form");
