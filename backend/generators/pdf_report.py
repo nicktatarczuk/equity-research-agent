@@ -175,7 +175,7 @@ def generate_pdf_report(state: dict) -> bytes:
         return f"{sign}{p * 100:.1f}%"
 
     if conf_rationale or change_mind or momentum_data:
-        story.append(Spacer(1, 0.05 * inch))
+        story.append(Spacer(1, 0.2 * inch))
         # Build a single multi-cell box
         call_rows = []
         # Confidence row
@@ -216,7 +216,7 @@ def generate_pdf_report(state: dict) -> bytes:
                 ("LINEBEFORE", (1, 0), (1, -1), 0.5, colors.lightgrey),
             ]))
             story.append(call_box)
-            story.append(Spacer(1, 0.15 * inch))
+            story.append(Spacer(1, 0.25 * inch))
 
     # --- KEY METRICS TABLE ---
     story.append(Paragraph("Key Financial Metrics", s["SectionHeader"]))
@@ -280,6 +280,44 @@ def generate_pdf_report(state: dict) -> bytes:
     story.append(Paragraph("Key Risks (Bear Case)", s["SectionHeader"]))
     for b in _bullets_from_text(state.get("risks", "")):
         story.append(Paragraph(f"• {b}", s["Body"]))
+
+    # --- CATALYSTS ---
+    catalysts = state.get("catalysts", []) or []
+    if catalysts:
+        story.append(Paragraph("Near-Term Catalysts", s["SectionHeader"]))
+        impact_colors = {
+            "POSITIVE": colors.HexColor("#0F8B5C"),
+            "NEGATIVE": colors.HexColor("#B33A3A"),
+            "NEUTRAL": colors.HexColor("#6B7280"),
+            "WATCH": ACCENT,
+        }
+        cat_rows = []
+        for c in catalysts:
+            impact = (c.get("impact") or "WATCH").upper()
+            cat_rows.append([
+                Paragraph(f"<b>{impact}</b>", ParagraphStyle(
+                    "Impact", parent=s["Body"], fontName="Helvetica-Bold",
+                    textColor=colors.white, alignment=1
+                )),
+                Paragraph(
+                    f"<b>{c.get('headline', '')}</b><br/>{c.get('interpretation', '')}",
+                    s["Body"]
+                ),
+            ])
+        cat_table = Table(cat_rows, colWidths=[0.9 * inch, 6.1 * inch])
+        style_rows = [
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+        ]
+        for i, c in enumerate(catalysts):
+            impact = (c.get("impact") or "WATCH").upper()
+            style_rows.append(("BACKGROUND", (0, i), (0, i), impact_colors.get(impact, ACCENT)))
+        cat_table.setStyle(TableStyle(style_rows))
+        story.append(cat_table)
 
     story.append(PageBreak())
 

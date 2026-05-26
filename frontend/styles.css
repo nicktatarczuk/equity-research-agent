@@ -557,3 +557,36 @@ footer {
   color: var(--text);
   margin: 0;
 }
+
+/* ===== Catalysts ===== */
+.catalysts-card .catalyst-item {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 1rem;
+  align-items: start;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.catalysts-card .catalyst-item:last-child { border-bottom: none; }
+.catalyst-impact {
+  text-align: center;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  color: white;
+}
+.catalyst-impact.positive { background: var(--green); }
+.catalyst-impact.negative { background: var(--red); }
+.catalyst-impact.neutral { background: #6B7280; }
+.catalyst-impact.watch { background: var(--gold); }
+.catalyst-text .catalyst-headline {
+  font-weight: 600;
+  color: var(--navy);
+  margin-bottom: 0.2rem;
+}
+.catalyst-text .catalyst-interp {
+  color: var(--text);
+  font-size: 0.95rem;
+}

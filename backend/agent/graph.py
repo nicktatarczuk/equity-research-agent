@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from langgraph.graph import END, StateGraph
 
-from .nodes import analyst_node, data_collector_node, researcher_node, writer_node
+from .nodes import analyst_node, catalyst_node, data_collector_node, researcher_node, writer_node
 from .state import AgentState
 
 
@@ -20,13 +20,16 @@ def build_agent():
     # Register nodes
     graph.add_node("data_collector", data_collector_node)
     graph.add_node("researcher", researcher_node)
+    graph.add_node("catalyst_scout", catalyst_node)
     graph.add_node("analyst", analyst_node)
     graph.add_node("writer", writer_node)
 
-    # Define the flow
+    # Define the flow:
+    # data_collector -> researcher -> catalyst_scout -> analyst -> writer
     graph.set_entry_point("data_collector")
     graph.add_edge("data_collector", "researcher")
-    graph.add_edge("researcher", "analyst")
+    graph.add_edge("researcher", "catalyst_scout")
+    graph.add_edge("catalyst_scout", "analyst")
     graph.add_edge("analyst", "writer")
     graph.add_edge("writer", END)
 

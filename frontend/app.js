@@ -220,6 +220,26 @@ function renderResults(d) {
     cmCard.classList.add("hidden");
   }
 
+  // Catalysts
+  const catCard = document.getElementById("catalysts-card");
+  const catList = d.catalysts || [];
+  if (catList.length > 0) {
+    const html = catList.map(c => {
+      const impact = (c.impact || "WATCH").toLowerCase();
+      return `<div class="catalyst-item">
+        <div class="catalyst-impact ${escapeHtml(impact)}">${escapeHtml(c.impact || "WATCH")}</div>
+        <div class="catalyst-text">
+          <div class="catalyst-headline">${escapeHtml(c.headline || "")}</div>
+          <div class="catalyst-interp">${escapeHtml(c.interpretation || "")}</div>
+        </div>
+      </div>`;
+    }).join("");
+    document.getElementById("r-catalysts").innerHTML = html;
+    catCard.classList.remove("hidden");
+  } else {
+    catCard.classList.add("hidden");
+  }
+
   // Log
   const logEl = document.getElementById("r-log");
   logEl.innerHTML = (d.log || []).map(line => `<li>${escapeHtml(line)}</li>`).join("");

@@ -191,27 +191,44 @@ Use these EXACT section headers verbatim, each on its own line, with the content
 
 ### BUSINESS OVERVIEW ###
 Two paragraphs (~150 words total). Cover:
-- What the company does and how it actually makes money (revenue model, segments)
+- What the company does and how it actually makes money (revenue model, segments, geographic mix)
 - Its market position, scale, and any distinctive operating characteristics
-Reference real numbers from the data.
+Reference real numbers. Be specific about segment percentages, customer types, geographic exposure.
 
 ### INVESTMENT THESIS ###
-3-5 bullet points (the bull case). Each bullet must be a specific, defensible reason to own this stock.
-Format each as "- " followed by the point. Reference actual numbers where possible.
-NO generic language like "strong brand" — be specific about WHY.
+2-5 bullets (the bull case). NUMBER OF BULLETS IS YOUR CALL based on how strong the case actually is.
+A weak company should get 2 bullets. A strong one might get 5. Don't pad to match risks.
+Each bullet: ONE specific, defensible reason to own this stock. Reference numbers. No symmetry for symmetry's sake.
 
 ### KEY RISKS ###
-3-5 bullet points (the bear case). Each must be specific to this company or its industry,
-not generic macro concerns. Reference financial data where relevant.
-Format each as "- " followed by the risk.
+2-5 bullets (the bear case). Same instruction: pick the count based on what's real, not for symmetry.
+If risks outnumber bulls, that's fine — it tells the reader something.
+Each: a specific threat to this company. No generic "macro headwinds" or "competition" alone.
 
 ### COMPETITIVE POSITION ###
-One paragraph (~120 words). Cover:
-- Main competitors (name them)
-- The moat (if any) and what specifically protects it
-- Where the company sits on the value chain
+One paragraph (~100-120 words). Name 2-3 actual competitors. State what specifically protects the moat
+(or admit there isn't one). Where on the value chain.
 
 Do not add any text before the first section header or after the final section's content.
+
+ANTI-PATTERNS — these phrasings make you sound like a robot. Read them, then write around them:
+
+BAD: "The company demonstrates robust profitability"
+GOOD: "Profit margins held at 27% even as revenue growth slowed to 6%"
+
+BAD: "Apple's tightly integrated ecosystem creates high switching costs"
+GOOD: "Once a household has 3+ Apple devices, churn drops to under 5%"
+
+BAD: "The Services segment continues to expand, driving higher-margin recurring revenue"
+GOOD: "Services hit $96B last year at ~70% gross margin, now ~25% of revenue"
+
+BAD: "Industry-leading profitability provides a buffer against economic downturns"
+GOOD: "$98B in annual FCF means Apple could absorb a 30% earnings hit and still buy back $40B/year"
+
+The pattern: replace abstract praise with a specific number that makes the point.
+
+Each bullet should pass this test: would a portfolio manager learn something from this, or could it
+apply to any company in the sector?
 """
 
     raw_research = call_llm(system, combined_prompt, temperature=0.3)
@@ -232,6 +249,86 @@ Do not add any text before the first section header or after the final section's
         "competitive_position": competitive_position,
         "log": log,
     }
+
+
+# ---------------------------------------------------------------------------
+# Node 2.5: Catalyst Scout — identifies near-term catalysts from news
+# ---------------------------------------------------------------------------
+def catalyst_node(state: AgentState) -> dict[str, Any]:
+    """
+    Extract near-term catalysts (positive, negative, neutral) from recent news.
+    Each catalyst gets a one-line interpretation and an impact tag.
+    """
+    log = state.get("log", []) + ["[catalyst_scout] Identifying catalysts"]
+    data = state.get("company_data") or {}
+    profile = data.get("profile", {})
+    news = data.get("news", []) or []
+
+    if not news:
+        log.append("[catalyst_scout] No recent news available — skipping")
+        return {"catalysts": [], "log": log}
+
+    # Build a numbered list of news headlines for the LLM to reference
+    headlines_text = "\n".join(
+        f"{i+1}. ({n.get('date', 'N/A')}) {n['title']}"
+        for i, n in enumerate(news[:8])
+        if n.get("title")
+    )
+
+    prompt = f"""
+You are a sell-side analyst's junior — your job is to scan recent news on {profile.get('name')} ({profile.get('ticker')}) and pull out the actual CATALYSTS.
+
+A catalyst is an event or development that could move the stock — not just any headline.
+Earnings releases, product launches, major contracts, regulatory rulings, executive changes, 
+guidance updates, M&A — these are catalysts. "Analyst raises price target" is NOT a catalyst.
+
+Recent news headlines:
+{headlines_text}
+
+For each TRUE catalyst (ignore filler), return one line in this exact format:
+CATALYST | impact | one-sentence-interpretation
+
+Where impact is one of: POSITIVE, NEGATIVE, NEUTRAL, WATCH
+
+Rules:
+- Return at most 5 catalysts. Quality over quantity. If only 2 of these matter, return 2.
+- If NONE of the headlines are real catalysts, return exactly: NONE
+- Each interpretation should be specific. NOT "good for the company". YES "could lift Services revenue 2-3% if the partnership closes by Q4".
+- No markdown. No asterisks. No preamble. Just the lines.
+"""
+    system = "You filter signal from noise. Pointed, short, opinionated."
+
+    try:
+        raw = call_llm(system, prompt, temperature=0.3)
+    except Exception as e:
+        log.append(f"[catalyst_scout] Failed: {e}")
+        return {"catalysts": [], "log": log}
+
+    catalysts = []
+    if "NONE" not in raw.upper().split("\n")[0]:
+        for line in raw.strip().split("\n"):
+            line = _strip_markdown(line.strip())
+            if not line or line.upper().startswith("CATALYST | IMPACT"):
+                continue
+            # Remove leading "CATALYST | " or numbering
+            parts = line.split("|")
+            if len(parts) >= 3:
+                headline = parts[0].strip().lstrip("0123456789.-) ").lstrip("CATALYST").strip(": ")
+                impact = parts[1].strip().upper()
+                interp = "|".join(parts[2:]).strip()
+                if impact not in ("POSITIVE", "NEGATIVE", "NEUTRAL", "WATCH"):
+                    impact = "WATCH"
+                if headline and interp:
+                    catalysts.append({
+                        "headline": headline,
+                        "impact": impact,
+                        "interpretation": interp,
+                    })
+            if len(catalysts) >= 5:
+                break
+
+    log.append(f"[catalyst_scout] Found {len(catalysts)} catalysts")
+    return {"catalysts": catalysts, "log": log}
 
 
 # ---------------------------------------------------------------------------

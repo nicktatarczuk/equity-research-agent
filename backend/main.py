@@ -92,6 +92,7 @@ class AnalyzeResponse(BaseModel):
     confidence_rationale: str = ""
     what_would_change_mind: str = ""
     momentum: dict = {}
+    catalysts: list = []
     log: list[str]
 
 
@@ -142,6 +143,7 @@ def analyze(req: AnalyzeRequest):
         confidence_rationale=state.get("confidence_rationale", ""),
         what_would_change_mind=state.get("what_would_change_mind", ""),
         momentum=state["company_data"].get("momentum", {}),
+        catalysts=state.get("catalysts", []),
         log=state.get("log", []),
     )
 
