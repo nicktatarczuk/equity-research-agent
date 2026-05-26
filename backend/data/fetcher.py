@@ -1,11 +1,15 @@
 """
-Data collection layer using Financial Modeling Prep (FMP) API.
+Data collection layer using Financial Modeling Prep (FMP) stable API.
 
-Why FMP instead of yfinance? yfinance scrapes Yahoo Finance and gets rate-limited
-hard when running on shared cloud IPs (like Render's free tier). FMP is a proper
-API with a free tier (250 requests/day) and reliable access from any IP.
+FMP migrated all endpoints from /api/v3/* to /stable/* in mid-2025.
+The legacy endpoints return 403 for new users. We use the stable endpoints.
 
-Each call to fetch_company_data() makes ~5 API requests.
+Key URL pattern change:
+  OLD: /api/v3/profile/AAPL?apikey=...
+  NEW: /stable/profile?symbol=AAPL&apikey=...
+
+Each call to fetch_company_data() makes ~5-6 API requests.
+Free tier: 250 requests/day.
 """
 from __future__ import annotations
 
@@ -18,8 +22,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-FMP_BASE = "https://financialmodelingprep.com/api/v3"
-FMP_STABLE = "https://financialmodelingprep.com/stable"
+FMP_BASE = "https://financialmodelingprep.com/stable"
 
 
 def _api_key() -> str:
@@ -31,9 +34,10 @@ def _api_key() -> str:
     return key
 
 
-def _get(url: str, params: dict | None = None) -> Any:
-    """Make a GET request to FMP. Returns parsed JSON or empty list on error."""
-    params = params or {}
+def _get(endpoint: str, params: dict | None = None) -> Any:
+    """Make a GET request to a stable FMP endpoint. Returns parsed JSON or empty list."""
+    url = f"{FMP_BASE}/{endpoint.lstrip('/')}"
+    params = dict(params or {})
     params["apikey"] = _api_key()
     try:
         r = requests.get(url, params=params, timeout=15)
@@ -41,8 +45,17 @@ def _get(url: str, params: dict | None = None) -> Any:
             raise RuntimeError("FMP rate limit reached (250/day free tier). Try again tomorrow or upgrade.")
         if r.status_code == 401:
             raise RuntimeError("FMP API key invalid. Check FMP_API_KEY environment variable.")
+        if r.status_code == 403:
+            # Could be: legacy endpoint, premium endpoint, or expired key
+            logger.warning(f"FMP returned 403 for {url}. Endpoint may require premium plan.")
+            return []
         r.raise_for_status()
-        return r.json()
+        data = r.json()
+        # Some endpoints return an error object with a top-level "Error Message" field
+        if isinstance(data, dict) and "Error Message" in data:
+            logger.warning(f"FMP error for {endpoint}: {data['Error Message']}")
+            return []
+        return data
     except requests.exceptions.RequestException as e:
         logger.warning(f"FMP request failed for {url}: {e}")
         return []
@@ -60,45 +73,44 @@ def _safe(d: dict, key: str, default: Any = None) -> Any:
 
 def fetch_company_data(ticker: str) -> dict[str, Any]:
     """
-    Pull everything we need about a company in one shot.
+    Pull everything we need about a company from FMP's stable endpoints.
     Returns a dict matching the structure the agent expects.
     Raises ValueError if the ticker is invalid.
     """
     ticker = ticker.upper().strip()
-    logger.info(f"Fetching data for {ticker} from FMP")
+    logger.info(f"Fetching data for {ticker} from FMP stable API")
 
-    # 1. Company profile (1 API call) - this is also our ticker validation
-    profile_resp = _get(f"{FMP_BASE}/profile/{ticker}")
+    # 1. Company profile (validates ticker exists)
+    profile_resp = _get("profile", {"symbol": ticker})
     if not profile_resp or not isinstance(profile_resp, list) or len(profile_resp) == 0:
         raise ValueError(f"Ticker '{ticker}' not found or has no data available.")
-
     p = profile_resp[0]
 
-    # 2. Key metrics TTM (1 API call) - ratios, margins, multiples
-    metrics_resp = _get(f"{FMP_BASE}/key-metrics-ttm/{ticker}")
+    # 2. TTM key metrics
+    metrics_resp = _get("key-metrics-ttm", {"symbol": ticker})
     m = metrics_resp[0] if metrics_resp and isinstance(metrics_resp, list) else {}
 
-    # 3. Financial ratios TTM (1 API call) - more ratios
-    ratios_resp = _get(f"{FMP_BASE}/ratios-ttm/{ticker}")
-    r = ratios_resp[0] if ratios_resp and isinstance(ratios_resp, list) else {}
+    # 3. TTM ratios
+    ratios_resp = _get("ratios-ttm", {"symbol": ticker})
+    r_data = ratios_resp[0] if ratios_resp and isinstance(ratios_resp, list) else {}
 
-    # 4. Latest income statement (1 API call) - for revenue, EBITDA
-    income_resp = _get(f"{FMP_BASE}/income-statement/{ticker}", {"limit": 4})
+    # 4. Income statement (last 4 years, annual)
+    income_resp = _get("income-statement", {"symbol": ticker, "limit": 4})
     income = income_resp if isinstance(income_resp, list) else []
     latest_income = income[0] if income else {}
 
-    # 5. Latest balance sheet (1 API call) - for debt, cash, shares
-    balance_resp = _get(f"{FMP_BASE}/balance-sheet-statement/{ticker}", {"limit": 4})
+    # 5. Balance sheet (last 4 years, annual)
+    balance_resp = _get("balance-sheet-statement", {"symbol": ticker, "limit": 4})
     balance = balance_resp if isinstance(balance_resp, list) else []
     latest_balance = balance[0] if balance else {}
 
-    # 6. Latest cash flow (1 API call) - for FCF
-    cashflow_resp = _get(f"{FMP_BASE}/cash-flow-statement/{ticker}", {"limit": 4})
+    # 6. Cash flow (last 4 years, annual)
+    cashflow_resp = _get("cash-flow-statement", {"symbol": ticker, "limit": 4})
     cashflow = cashflow_resp if isinstance(cashflow_resp, list) else []
     latest_cashflow = cashflow[0] if cashflow else {}
 
-    # 7. Stock news (1 API call) - optional, fail gracefully
-    news_resp = _get(f"{FMP_BASE}/stock_news", {"tickers": ticker, "limit": 8})
+    # 7. News (free tier supports this on stable, key is "news/stock")
+    news_resp = _get("news/stock", {"symbols": ticker, "limit": 8})
     news_list = news_resp if isinstance(news_resp, list) else []
 
     # --- Build profile dict ---
@@ -111,10 +123,10 @@ def fetch_company_data(ticker: str) -> dict[str, Any]:
         "website": _safe(p, "website", ""),
         "summary": _safe(p, "description", ""),
         "employees": _safe(p, "fullTimeEmployees"),
-        "market_cap": _safe(p, "mktCap"),
+        "market_cap": _safe(p, "marketCap") or _safe(p, "mktCap"),
         "enterprise_value": _safe(m, "enterpriseValueTTM"),
         "currency": _safe(p, "currency", "USD"),
-        "exchange": _safe(p, "exchangeShortName", ""),
+        "exchange": _safe(p, "exchangeShortName") or _safe(p, "exchange", ""),
     }
 
     # Convert employees to int if it came as a string
@@ -124,43 +136,75 @@ def fetch_company_data(ticker: str) -> dict[str, Any]:
         except (ValueError, TypeError):
             profile["employees"] = None
 
-    # --- Build metrics dict ---
-    # Many fields are in different places between profile/metrics/ratios.
-    # We pull from whichever has them.
+    # --- Pull financial figures from the right places ---
     current_price = _safe(p, "price")
-    revenue = _safe(latest_income, "revenue") or _safe(m, "revenuePerShareTTM", 0) * (_safe(p, "mktCap", 0) / max(_safe(p, "price", 1), 1) or 1)
+    revenue = _safe(latest_income, "revenue")
     ebitda = _safe(latest_income, "ebitda")
     fcf = _safe(latest_cashflow, "freeCashFlow")
     op_cf = _safe(latest_cashflow, "operatingCashFlow") or _safe(latest_cashflow, "netCashProvidedByOperatingActivities")
     total_debt = _safe(latest_balance, "totalDebt")
-    total_cash = _safe(latest_balance, "cashAndCashEquivalents") or _safe(latest_balance, "cashAndShortTermInvestments")
-    shares = _safe(latest_income, "weightedAverageShsOut") or _safe(latest_income, "weightedAverageShsOutDil")
+    total_cash = (
+        _safe(latest_balance, "cashAndCashEquivalents")
+        or _safe(latest_balance, "cashAndShortTermInvestments")
+    )
+    shares = (
+        _safe(latest_income, "weightedAverageShsOut")
+        or _safe(latest_income, "weightedAverageShsOutDil")
+    )
 
-    # Revenue growth: compare last two periods if available
+    # Revenue growth: compare two most recent annual periods
     revenue_growth = None
     if len(income) >= 2:
         prev_rev = _safe(income[1], "revenue")
         if prev_rev and revenue:
             revenue_growth = (revenue - prev_rev) / prev_rev
 
+    # Earnings growth: compare two most recent net income figures
+    earnings_growth = None
+    if len(income) >= 2:
+        cur_ni = _safe(latest_income, "netIncome")
+        prev_ni = _safe(income[1], "netIncome")
+        if prev_ni and cur_ni and prev_ni > 0:
+            earnings_growth = (cur_ni - prev_ni) / prev_ni
+
+    # 52-week high/low from profile "range" field, formatted as "low-high"
+    week_low, week_high = None, None
+    range_str = _safe(p, "range", "")
+    if isinstance(range_str, str) and "-" in range_str:
+        try:
+            parts = [x.strip() for x in range_str.split("-")]
+            week_low = float(parts[0])
+            week_high = float(parts[1])
+        except (ValueError, IndexError):
+            pass
+
+    # Dividend yield calculated from lastDividend / price
+    div_yield = None
+    last_div = _safe(p, "lastDividend") or _safe(p, "lastDiv")
+    if current_price and last_div:
+        try:
+            div_yield = float(last_div) / float(current_price)
+        except (ValueError, TypeError, ZeroDivisionError):
+            pass
+
     metrics = {
         "current_price": current_price,
-        "52w_high": _safe(p, "range", "").split("-")[-1].strip() if isinstance(_safe(p, "range"), str) and "-" in _safe(p, "range", "") else None,
-        "52w_low": _safe(p, "range", "").split("-")[0].strip() if isinstance(_safe(p, "range"), str) and "-" in _safe(p, "range", "") else None,
-        "pe_ratio": _safe(m, "peRatioTTM") or _safe(r, "priceEarningsRatioTTM"),
-        "forward_pe": None,  # FMP free tier doesn't include forward P/E
-        "peg_ratio": _safe(r, "pegRatioTTM"),
-        "price_to_book": _safe(m, "pbRatioTTM") or _safe(r, "priceToBookRatioTTM"),
-        "ev_to_revenue": _safe(m, "evToSalesTTM") or _safe(m, "enterpriseValueOverEBITDATTM"),
-        "ev_to_ebitda": _safe(m, "enterpriseValueOverEBITDATTM"),
-        "profit_margin": _safe(r, "netProfitMarginTTM"),
-        "operating_margin": _safe(r, "operatingProfitMarginTTM"),
-        "roe": _safe(r, "returnOnEquityTTM") or _safe(m, "roeTTM"),
-        "roa": _safe(r, "returnOnAssetsTTM"),
+        "52w_high": week_high,
+        "52w_low": week_low,
+        "pe_ratio": _safe(m, "peRatioTTM") or _safe(r_data, "priceEarningsRatioTTM") or _safe(r_data, "peRatioTTM"),
+        "forward_pe": None,  # Premium tier only
+        "peg_ratio": _safe(r_data, "pegRatioTTM"),
+        "price_to_book": _safe(m, "pbRatioTTM") or _safe(r_data, "priceToBookRatioTTM"),
+        "ev_to_revenue": _safe(m, "evToSalesTTM"),
+        "ev_to_ebitda": _safe(m, "enterpriseValueOverEBITDATTM") or _safe(m, "evToEBITDATTM"),
+        "profit_margin": _safe(r_data, "netProfitMarginTTM"),
+        "operating_margin": _safe(r_data, "operatingProfitMarginTTM"),
+        "roe": _safe(r_data, "returnOnEquityTTM") or _safe(m, "roeTTM"),
+        "roa": _safe(r_data, "returnOnAssetsTTM"),
         "revenue_growth": revenue_growth,
-        "earnings_growth": None,
-        "debt_to_equity": _safe(r, "debtEquityRatioTTM"),
-        "current_ratio": _safe(r, "currentRatioTTM"),
+        "earnings_growth": earnings_growth,
+        "debt_to_equity": _safe(r_data, "debtEquityRatioTTM") or _safe(r_data, "debtToEquityTTM"),
+        "current_ratio": _safe(r_data, "currentRatioTTM"),
         "free_cash_flow": fcf,
         "operating_cash_flow": op_cf,
         "total_revenue": revenue,
@@ -169,21 +213,10 @@ def fetch_company_data(ticker: str) -> dict[str, Any]:
         "total_cash": total_cash,
         "shares_outstanding": shares,
         "beta": _safe(p, "beta"),
-        "dividend_yield": _safe(p, "lastDiv", 0) / current_price if current_price and _safe(p, "lastDiv") else None,
+        "dividend_yield": div_yield,
     }
 
-    # Parse 52w high/low from "range" field which is "low-high" format
-    range_str = _safe(p, "range", "")
-    if isinstance(range_str, str) and "-" in range_str:
-        try:
-            parts = [x.strip() for x in range_str.split("-")]
-            metrics["52w_low"] = float(parts[0])
-            metrics["52w_high"] = float(parts[1])
-        except (ValueError, IndexError):
-            metrics["52w_low"] = None
-            metrics["52w_high"] = None
-
-    # --- Build statement lists (for completeness, though the agent mainly uses metrics) ---
+    # --- Build statement lists (used by the report for completeness) ---
     income_statement = [
         {
             "period": _safe(i, "date", ""),
@@ -221,10 +254,14 @@ def fetch_company_data(ticker: str) -> dict[str, Any]:
         title = _safe(item, "title", "")
         if not title:
             continue
+        # News endpoint returns date as "publishedDate"
+        date_str = _safe(item, "publishedDate") or _safe(item, "date", "")
+        if isinstance(date_str, str) and len(date_str) >= 10:
+            date_str = date_str[:10]
         news.append({
             "title": title,
-            "publisher": _safe(item, "site", ""),
-            "date": str(_safe(item, "publishedDate", ""))[:10],
+            "publisher": _safe(item, "site") or _safe(item, "publisher", ""),
+            "date": str(date_str),
         })
 
     return {
@@ -233,7 +270,7 @@ def fetch_company_data(ticker: str) -> dict[str, Any]:
         "income_statement": income_statement,
         "balance_sheet": balance_sheet,
         "cash_flow": cash_flow_list,
-        "price_history": [],  # Not pulled — agent doesn't use this directly
+        "price_history": [],
         "news": news,
         "fetched_at": datetime.utcnow().isoformat(),
     }
