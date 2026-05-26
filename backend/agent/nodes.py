@@ -120,6 +120,19 @@ def researcher_node(state: AgentState) -> dict[str, Any]:
     profile = data.get("profile", {})
     metrics = data.get("metrics", {})
     news = data.get("news", [])
+    momentum = data.get("momentum") or {}
+    anchors = data.get("historical_anchors") or {}
+
+    # Format momentum compactly
+    def _fmt_mom(p):
+        return f"{p * 100:+.1f}%" if p is not None else "N/A"
+
+    momentum_text = (
+        f"1mo: {_fmt_mom(momentum.get('price_1mo_pct'))} | "
+        f"3mo: {_fmt_mom(momentum.get('price_3mo_pct'))} | "
+        f"YTD: {_fmt_mom(momentum.get('price_ytd_pct'))} | "
+        f"1yr: {_fmt_mom(momentum.get('price_1yr_pct'))}"
+    )
 
     context = f"""
 Company: {profile.get('name')} ({profile.get('ticker')})
@@ -142,20 +155,31 @@ Key Metrics:
 - Free Cash Flow: {_fmt_money_short(metrics.get('free_cash_flow'))}
 - EBITDA: {_fmt_money_short(metrics.get('ebitda'))}
 
+Historical context:
+- 3-year avg FCF margin: {_safe_pct(anchors.get('avg_fcf_margin_3y'))}
+- 3-year avg revenue growth: {_safe_pct(anchors.get('avg_revenue_growth_3y'))}
+
+Price momentum (vs current): {momentum_text}
+
 Recent News Headlines:
 {chr(10).join(f"- {n['title']}" for n in news[:5]) or "No recent news."}
 """.strip()
 
     system = (
         "You are a senior equity research analyst at a top-tier investment bank "
-        "(think Goldman Sachs / Morgan Stanley level). Write clear, professional, "
-        "fact-based analysis. Use the actual numbers provided. Avoid generic platitudes "
-        "like 'strong brand' or 'macro tailwinds' — be specific. Reference the data. "
+        "(think Goldman Sachs / Morgan Stanley level). Your voice is sharp, specific, opinionated. "
+        "Reference real numbers. Take positions. The portfolio manager reading this is paying for "
+        "your judgment, not a textbook restatement."
         "\n\nFORMATTING RULES (critical):\n"
         "- DO NOT use markdown emphasis (no **bold**, no *italics*). Write in plain prose.\n"
-        "- Format large dollar amounts compactly: $5.19T, $96.7B, $12.3M — never as raw digits like $5,189,482,299,927.\n"
+        "- Format large dollar amounts compactly: $5.19T, $96.7B, $12.3M — never as raw digits.\n"
         "- Format percentages as 65.5% or 63.0%, not 0.655.\n"
-        "- For bullet points, just use '- ' at the start of each line — don't bold the leading phrase."
+        "- For bullet points, just use '- ' at the start of each line."
+        "\n\nFORBIDDEN VOICE (using these makes you sound like AI):\n"
+        "- 'robust', 'exceptional', 'significant', 'substantial', 'consistent'\n"
+        "- 'strong fundamentals', 'leverages', 'well-positioned', 'comprehensive', 'best-in-class'\n"
+        "- 'demonstrates strong', 'enables continued', 'positions itself'\n"
+        "Write around these. Use specific verbs and concrete claims instead."
     )
 
     # Single combined call — returns all 4 sections at once.
@@ -229,6 +253,23 @@ def analyst_node(state: AgentState) -> dict[str, Any]:
     growth = metrics.get("revenue_growth") or 0.05
     beta = metrics.get("beta") or 1.0
 
+    # Historical anchors fight the model's tendency to randomly under-margin mature businesses
+    anchors = data.get("historical_anchors") or {}
+    hist_fcf_margin = anchors.get("avg_fcf_margin_3y")
+    hist_rev_growth = anchors.get("avg_revenue_growth_3y")
+
+    # Current FCF margin from latest year (if computable)
+    current_fcf_margin = (fcf / base_revenue) if (fcf and base_revenue) else None
+
+    anchors_text = []
+    if current_fcf_margin is not None:
+        anchors_text.append(f"- Current FCF margin (TTM): {current_fcf_margin * 100:.1f}%")
+    if hist_fcf_margin is not None:
+        anchors_text.append(f"- Avg FCF margin (last 3 years): {hist_fcf_margin * 100:.1f}%")
+    if hist_rev_growth is not None:
+        anchors_text.append(f"- Avg revenue growth (last 3 years): {hist_rev_growth * 100:.1f}%")
+    anchors_block = "\n".join(anchors_text) or "- (No historical anchor data available)"
+
     assumption_prompt = f"""
 You are a sell-side equity analyst building a 5-year DCF for {profile.get('name')} ({profile.get('ticker')}).
 
@@ -236,10 +277,19 @@ Current financial profile:
 - Sector: {profile.get('sector')}
 - Latest Revenue: ${_safe_num(base_revenue)}
 - Latest Free Cash Flow: ${_safe_num(fcf)}
-- Recent Revenue Growth: {_safe_pct(growth)}
+- Recent Revenue Growth (YoY): {_safe_pct(growth)}
 - Operating Margin: {_safe_pct(metrics.get('operating_margin'))}
+- Profit Margin: {_safe_pct(metrics.get('profit_margin'))}
 - Beta: {beta}
 - Net Debt: ${_safe_num((metrics.get('total_debt') or 0) - (metrics.get('total_cash') or 0))}
+
+HISTORICAL ANCHORS (use these — don't drift far without good reason):
+{anchors_block}
+
+CRITICAL: Your fcf_margin assumption should be CLOSE to the company's historical FCF margin.
+For mature cash machines like Apple, NVDA, MSFT this is often 20-35%. Don't default to 12-18%
+unless the company actually runs at those levels. If historical margins are 25%+, your assumption
+should reflect that.
 
 Provide reasonable forward-looking DCF assumptions. Respond ONLY with valid JSON, no markdown,
 matching exactly this schema:
@@ -253,12 +303,12 @@ matching exactly this schema:
   "fcf_margin": 0.15,
   "terminal_growth": 0.025,
   "wacc": 0.09,
-  "rationale": "Brief 1-sentence justification."
+  "rationale": "1-sentence justification grounded in the actual numbers."
 }}
 
 Constraints:
 - Growth rates between -0.10 and 0.40 (decimals, not percentages)
-- fcf_margin between 0.02 and 0.40
+- fcf_margin between 0.02 and 0.45 — should be within ±5pp of the historical FCF margin above
 - terminal_growth between 0.015 and 0.035 (must be < WACC)
 - WACC between 0.06 and 0.14, scaled to beta and sector risk
 """
@@ -378,12 +428,13 @@ def _compute_dcf(
 # Node 4: Writer — synthesizes into final recommendation
 # ---------------------------------------------------------------------------
 def writer_node(state: AgentState) -> dict[str, Any]:
-    """Produce executive summary + BUY/HOLD/SELL recommendation."""
+    """Produce executive summary, recommendation, confidence score, and 'what would change my mind'."""
     log = state.get("log", []) + ["[writer] Synthesizing final recommendation"]
     data = state.get("company_data") or {}
     profile = data.get("profile", {})
     metrics = data.get("metrics", {})
     val = state.get("dcf_valuation") or {}
+    momentum = data.get("momentum") or {}
 
     upside = val.get("upside_pct", 0)
 
@@ -397,37 +448,121 @@ def writer_node(state: AgentState) -> dict[str, Any]:
 
     target = val.get("implied_share_price", 0)
 
+    # Compute a quantitative confidence score (1-10)
+    # Inputs: valuation gap, data completeness, beta, news availability
+    base_conf = 6  # neutral starting point
+    # Larger valuation gaps reduce confidence (more uncertainty)
+    abs_upside = abs(upside)
+    if abs_upside > 0.6:
+        base_conf -= 2  # huge gap = high uncertainty in the DCF
+    elif abs_upside > 0.3:
+        base_conf -= 1
+    elif abs_upside < 0.1:
+        base_conf += 1
+    # High beta = more volatility = lower confidence
+    beta = metrics.get("beta") or 1.0
+    if beta and beta > 1.8:
+        base_conf -= 1
+    elif beta and beta < 0.9:
+        base_conf += 1
+    # Data completeness
+    if metrics.get("pe_ratio") and metrics.get("roe") and metrics.get("free_cash_flow"):
+        base_conf += 1
+    # Clamp 1-10
+    confidence_score = max(1, min(10, base_conf))
+
+    # Build momentum context for the prompt
+    def _fmt_mom(p):
+        if p is None:
+            return "N/A"
+        return f"{p * 100:+.1f}%"
+
+    momentum_text = (
+        f"1mo: {_fmt_mom(momentum.get('price_1mo_pct'))} | "
+        f"3mo: {_fmt_mom(momentum.get('price_3mo_pct'))} | "
+        f"YTD: {_fmt_mom(momentum.get('price_ytd_pct'))} | "
+        f"1yr: {_fmt_mom(momentum.get('price_1yr_pct'))}"
+    )
+
     summary_prompt = f"""
-You are writing the executive summary of an equity research report on {profile.get('name')} ({profile.get('ticker')}).
+You are writing the analyst's CALL on {profile.get('name')} ({profile.get('ticker')}) — the part that goes
+on the cover page of the report. This is YOUR view, not a textbook summary. Be pointed, direct, and specific.
 
-Key inputs to reference:
-- Current price: ${_safe_num(metrics.get('current_price'), ',.2f')}
-- DCF implied price target: ${target:,.2f}
-- Implied upside/downside: {upside * 100:+.1f}%
-- Recommendation: {rec}
+Key inputs:
 - Sector: {profile.get('sector')}
+- Current price: ${_safe_num(metrics.get('current_price'), ',.2f')}
+- DCF implied target: ${target:,.2f}
+- Implied upside/downside: {upside * 100:+.1f}%
+- Recommendation (derived from DCF): {rec}
+- Price momentum: {momentum_text}
+- Beta: {beta}
 
-Investment thesis highlights:
+Bull case bullets (from researcher):
 {state.get('investment_thesis', 'N/A')[:600]}
 
-Key risks:
+Bear case bullets (from researcher):
 {state.get('risks', 'N/A')[:600]}
 
-Write a tight 3-paragraph executive summary. Paragraph 1: what the company does and the recommendation
-with target price. Paragraph 2: top 2-3 reasons supporting it. Paragraph 3: top 2 risks that could
-derail the thesis. ~250 words total. Professional, sell-side tone.
+Write THREE sections using these EXACT delimiters:
+
+### EXECUTIVE SUMMARY ###
+Three short paragraphs (~250 words total):
+
+Paragraph 1 (the call): Open with the recommendation framed as YOUR view, not a textbook restatement.
+Example openings to emulate:
+- "We rate AAPL a SELL at $311 — the multiple, not the business, is the problem."
+- "NVDA is a BUY at $214, though the easy money has already been made."
+- "META is a HOLD here. The bull case is too consensus, the bear case is too lazy."
+Then 2-3 sentences explaining the core thesis in your own framing. Reference the ACTUAL price and target.
+
+Paragraph 2 (why we're right): The 2-3 strongest specific arguments for our call. Reference real numbers.
+Use verbs that take a position ("we argue", "the market is missing", "consensus underweights").
+NOT generic phrases like "robust profitability" or "exceptional fundamentals".
+
+Paragraph 3 (what could go wrong): The 1-2 risks that genuinely threaten our thesis. Be honest about
+where we could be wrong — this builds credibility.
+
+### WHAT WOULD CHANGE OUR MIND ###
+ONE sentence. Specific and falsifiable. Example:
+"We would flip to BUY if FCF margin re-expands above 28% for two consecutive quarters."
+Or: "A pullback below $180 with services growth holding above 12% would change the call to BUY."
+
+### CONFIDENCE RATIONALE ###
+ONE sentence explaining what drives our conviction level (or lack of it). Example:
+"High confidence — large valuation gap, stable cash generation, clean balance sheet."
+Or: "Moderate confidence — strong fundamentals but high beta and a one-product concentration risk."
+
+CRITICAL VOICE RULES:
+- Forbidden words/phrases (using these makes you sound robotic): "robust", "exceptional", "significant",
+  "substantial", "consistent", "strong fundamentals", "leverages", "well-positioned", "comprehensive",
+  "best-in-class". Write around them.
+- Take a position. "The market is mispricing X" beats "X may face challenges".
+- Be specific. "Services revenue grew 12.4%" beats "services showed growth".
+- DO NOT use markdown emphasis (no **bold**, no *italics*).
+- Format dollar amounts compactly: $5.19T, $96.7B, $416B.
 """
     system = (
-        "You are a sell-side analyst writing for institutional investors. Concise, specific, no fluff. "
-        "DO NOT use markdown emphasis (no **bold** or *italics*). Write in plain prose. "
-        "Format large dollar amounts compactly (e.g. $5.19T, $96.7B), not as raw digits."
+        "You are a senior buy-side analyst writing for a portfolio manager who is paying you to have an opinion. "
+        "Sharp, specific, opinionated — but grounded in the numbers. No textbook prose."
     )
-    exec_summary = _strip_markdown(call_llm(system, summary_prompt, temperature=0.3))
 
-    log.append(f"[writer] Final recommendation: {rec} | Target: ${target:.2f}")
+    raw = call_llm(system, summary_prompt, temperature=0.4)
+    sections = _split_research_sections(raw)
+    exec_summary = _strip_markdown(sections.get("EXECUTIVE SUMMARY", "")).strip()
+    what_would_change_mind = _strip_markdown(sections.get("WHAT WOULD CHANGE OUR MIND", "")).strip()
+    confidence_rationale = _strip_markdown(sections.get("CONFIDENCE RATIONALE", "")).strip()
+
+    # Fallback: if parsing failed, use the whole raw text as the summary
+    if not exec_summary:
+        exec_summary = _strip_markdown(raw)
+
+    log.append(f"[writer] Final: {rec} | Target ${target:.2f} | Confidence {confidence_score}/10")
     return {
         "executive_summary": exec_summary,
         "recommendation": rec,
         "target_price": target,
+        "confidence_score": confidence_score,
+        "confidence_rationale": confidence_rationale,
+        "what_would_change_mind": what_would_change_mind,
         "log": log,
     }

@@ -71,6 +71,73 @@ def _safe(d: dict, key: str, default: Any = None) -> Any:
     return v
 
 
+def _compute_momentum(hist_data: list, current_price: float | None) -> dict:
+    """
+    Compute price momentum from historical daily price data.
+    Returns dict with 1mo / 3mo / ytd / 1yr percent changes.
+
+    hist_data items look like {"date": "2025-11-15", "price": 215.34, ...} or similar.
+    Most-recent first or oldest first — we sort to be safe.
+    """
+    if not hist_data or not current_price:
+        return {"price_1mo_pct": None, "price_3mo_pct": None, "price_ytd_pct": None, "price_1yr_pct": None}
+
+    # Normalize: list of (date_string, price). The stable API uses "date" and "price" or "close".
+    def _price_of(item):
+        return _safe(item, "close") or _safe(item, "price") or _safe(item, "adjClose")
+
+    rows = []
+    for item in hist_data:
+        d = _safe(item, "date")
+        p = _price_of(item)
+        if d and p:
+            rows.append((str(d)[:10], float(p)))
+    if not rows:
+        return {"price_1mo_pct": None, "price_3mo_pct": None, "price_ytd_pct": None, "price_1yr_pct": None}
+
+    # Sort ascending by date so the most recent is last
+    rows.sort(key=lambda x: x[0])
+
+    from datetime import datetime, timedelta
+    most_recent_date = datetime.strptime(rows[-1][0], "%Y-%m-%d")
+
+    def _closest_price_before(days_ago: int) -> float | None:
+        target = most_recent_date - timedelta(days=days_ago)
+        # Find the latest row with date <= target
+        best = None
+        for date_str, price in rows:
+            d = datetime.strptime(date_str, "%Y-%m-%d")
+            if d <= target:
+                best = price
+            else:
+                break
+        return best
+
+    def _ytd_start_price() -> float | None:
+        ytd_target = datetime(most_recent_date.year, 1, 1)
+        best = None
+        for date_str, price in rows:
+            d = datetime.strptime(date_str, "%Y-%m-%d")
+            if d <= ytd_target:
+                best = price
+            else:
+                break
+        # If no data before Jan 1 (shouldn't happen for a full year of data), use first row
+        return best if best is not None else rows[0][1]
+
+    def _pct_change(from_price: float | None) -> float | None:
+        if from_price is None or from_price == 0 or not current_price:
+            return None
+        return (current_price - from_price) / from_price
+
+    return {
+        "price_1mo_pct": _pct_change(_closest_price_before(30)),
+        "price_3mo_pct": _pct_change(_closest_price_before(90)),
+        "price_ytd_pct": _pct_change(_ytd_start_price()),
+        "price_1yr_pct": _pct_change(_closest_price_before(365)),
+    }
+
+
 def fetch_company_data(ticker: str) -> dict[str, Any]:
     """
     Pull everything we need about a company from FMP's stable endpoints.
@@ -112,6 +179,14 @@ def fetch_company_data(ticker: str) -> dict[str, Any]:
     # 7. News (free tier supports this on stable, key is "news/stock")
     news_resp = _get("news/stock", {"symbols": ticker, "limit": 8})
     news_list = news_resp if isinstance(news_resp, list) else []
+
+    # 8. Historical price for momentum (last ~14 months of daily prices)
+    #    Used to compute 1mo / 3mo / YTD / 1yr returns
+    hist_resp = _get("historical-price-eod/full", {"symbol": ticker})
+    if not hist_resp:
+        # Fallback to "light" endpoint name variants
+        hist_resp = _get("historical-price-eod/light", {"symbol": ticker})
+    hist_data = hist_resp if isinstance(hist_resp, list) else (hist_resp.get("historical", []) if isinstance(hist_resp, dict) else [])
 
     # --- Build profile dict ---
     profile = {
@@ -166,6 +241,33 @@ def fetch_company_data(ticker: str) -> dict[str, Any]:
         prev_ni = _safe(income[1], "netIncome")
         if prev_ni and cur_ni and prev_ni > 0:
             earnings_growth = (cur_ni - prev_ni) / prev_ni
+
+    # Historical FCF margins (avg of last 3-4 years) — used to anchor DCF assumptions
+    historical_fcf_margins = []
+    for i in range(min(len(income), len(cashflow))):
+        rev_i = _safe(income[i], "revenue")
+        fcf_i = _safe(cashflow[i], "freeCashFlow")
+        if rev_i and fcf_i and rev_i > 0:
+            historical_fcf_margins.append(fcf_i / rev_i)
+    avg_historical_fcf_margin = (
+        sum(historical_fcf_margins) / len(historical_fcf_margins)
+        if historical_fcf_margins else None
+    )
+
+    # Historical revenue growth (avg of last 3 years YoY) — anchors growth assumptions
+    historical_rev_growths = []
+    for i in range(len(income) - 1):
+        cur = _safe(income[i], "revenue")
+        prev = _safe(income[i + 1], "revenue")
+        if cur and prev and prev > 0:
+            historical_rev_growths.append((cur - prev) / prev)
+    avg_historical_rev_growth = (
+        sum(historical_rev_growths) / len(historical_rev_growths)
+        if historical_rev_growths else None
+    )
+
+    # --- Momentum computation from historical prices ---
+    momentum = _compute_momentum(hist_data, current_price)
 
     # 52-week high/low from profile "range" field, formatted as "low-high"
     week_low, week_high = None, None
@@ -272,5 +374,12 @@ def fetch_company_data(ticker: str) -> dict[str, Any]:
         "cash_flow": cash_flow_list,
         "price_history": [],
         "news": news,
+        # New: anchors for the analyst to use in DCF assumptions
+        "historical_anchors": {
+            "avg_fcf_margin_3y": avg_historical_fcf_margin,
+            "avg_revenue_growth_3y": avg_historical_rev_growth,
+        },
+        # New: price momentum percentages (1mo, 3mo, YTD, 1yr)
+        "momentum": momentum,
         "fetched_at": datetime.utcnow().isoformat(),
     }

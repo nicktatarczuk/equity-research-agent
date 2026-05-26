@@ -1,7 +1,9 @@
 // ====== Config ======
 // When running locally: backend on :8000
 // When deployed: change this to your backend URL (e.g. https://your-app.onrender.com)
-const API_BASE = "https://equity-research-agent-0t0d.onrender.com";  // set window.__API_BASE__ via env at deploy time
+const API_BASE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+  ? "http://localhost:8000"
+  : (window.__API_BASE__ || "");  // set window.__API_BASE__ via env at deploy time
 
 // ====== DOM ======
 const form = document.getElementById("analyze-form");
@@ -171,6 +173,31 @@ function renderResults(d) {
   document.getElementById("k-upside").style.color =
     d.upside_pct >= 0 ? "var(--green)" : "var(--red)";
 
+  // Confidence
+  const confEl = document.getElementById("k-confidence");
+  if (d.confidence_score) {
+    confEl.textContent = `${d.confidence_score}/10`;
+  } else {
+    confEl.textContent = "—";
+  }
+
+  // Momentum strip
+  const setMom = (id, val) => {
+    const el = document.getElementById(id);
+    el.classList.remove("positive", "negative");
+    if (val === null || val === undefined) {
+      el.textContent = "—";
+      return;
+    }
+    el.textContent = fmtPct(val);
+    el.classList.add(val >= 0 ? "positive" : "negative");
+  };
+  const m = d.momentum || {};
+  setMom("m-1mo", m.price_1mo_pct);
+  setMom("m-3mo", m.price_3mo_pct);
+  setMom("m-ytd", m.price_ytd_pct);
+  setMom("m-1yr", m.price_1yr_pct);
+
   // Downloads
   document.getElementById("d-pdf").href = `${API_BASE}/api/report/${d.job_id}`;
   document.getElementById("d-deck").href = `${API_BASE}/api/deck/${d.job_id}`;
@@ -182,6 +209,16 @@ function renderResults(d) {
   document.getElementById("r-risks").innerHTML = bulletize(d.risks);
   document.getElementById("r-overview").innerHTML = paraize(d.business_overview);
   document.getElementById("r-competitive").innerHTML = paraize(d.competitive_position);
+
+  // What would change our mind
+  const cmCard = document.getElementById("change-mind-card");
+  const cmText = (d.what_would_change_mind || "").trim();
+  if (cmText) {
+    document.getElementById("r-change-mind").textContent = cmText;
+    cmCard.classList.remove("hidden");
+  } else {
+    cmCard.classList.add("hidden");
+  }
 
   // Log
   const logEl = document.getElementById("r-log");

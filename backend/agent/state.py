@@ -14,6 +14,10 @@ class AgentState(TypedDict, total=False):
     # Raw data (populated by data_collector)
     company_data: dict[str, Any]
 
+    # Catalysts & momentum (populated by data_collector or its own node)
+    catalysts: list[dict[str, Any]]   # [{date, headline, type, sentiment, interpretation}]
+    momentum: dict[str, Any]          # {price_1mo, price_3mo, price_ytd, price_1yr, vs_sector}
+
     # Generated analyses (populated by researcher)
     business_overview: str
     investment_thesis: str
@@ -28,6 +32,9 @@ class AgentState(TypedDict, total=False):
     executive_summary: str
     recommendation: str  # BUY / HOLD / SELL
     target_price: float
+    confidence_score: int  # 1-10
+    confidence_rationale: str
+    what_would_change_mind: str
 
     # Bookkeeping
     errors: list[str]

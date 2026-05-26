@@ -487,3 +487,73 @@ footer {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== Phase 2 additions ===== */
+
+/* KPI grid extended to 4 columns when confidence is present */
+.kpi-grid {
+  grid-template-columns: repeat(4, 1fr);
+}
+@media (max-width: 720px) {
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Momentum strip — horizontal row of price returns */
+.momentum-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.mom-item {
+  padding: 1rem 1.2rem;
+  text-align: center;
+  border-right: 1px solid var(--border);
+}
+.mom-item:last-child { border-right: none; }
+.mom-label {
+  display: block;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  color: var(--text-2);
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+.mom-value {
+  display: block;
+  font-family: 'Playfair Display', serif;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--navy);
+}
+.mom-value.positive { color: var(--green); }
+.mom-value.negative { color: var(--red); }
+@media (max-width: 720px) {
+  .momentum-strip { grid-template-columns: repeat(2, 1fr); }
+  .mom-item:nth-child(2) { border-right: none; }
+  .mom-item:nth-child(1), .mom-item:nth-child(2) { border-bottom: 1px solid var(--border); }
+}
+
+/* "What would change our mind" card — visually distinct */
+.change-mind {
+  background: linear-gradient(135deg, #FFF8E8 0%, #FAFAFC 100%);
+  border-left: 4px solid var(--gold);
+}
+.change-mind h3 {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--navy);
+  margin-bottom: 0.6rem;
+  letter-spacing: 0.02em;
+}
+.change-mind p {
+  font-size: 1rem;
+  font-style: italic;
+  color: var(--text);
+  margin: 0;
+}

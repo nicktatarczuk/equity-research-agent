@@ -162,6 +162,62 @@ def generate_pdf_report(state: dict) -> bytes:
         if para.strip():
             story.append(Paragraph(para.strip(), s["Body"]))
 
+    # --- "THE CALL" CALLOUT BOX: confidence + what-would-change-mind ---
+    confidence = state.get("confidence_score", 5)
+    conf_rationale = state.get("confidence_rationale", "")
+    change_mind = state.get("what_would_change_mind", "")
+    momentum_data = (state.get("company_data") or {}).get("momentum", {}) or {}
+
+    def _fmt_mom(p):
+        if p is None:
+            return "N/A"
+        sign = "+" if p >= 0 else ""
+        return f"{sign}{p * 100:.1f}%"
+
+    if conf_rationale or change_mind or momentum_data:
+        story.append(Spacer(1, 0.05 * inch))
+        # Build a single multi-cell box
+        call_rows = []
+        # Confidence row
+        if conf_rationale:
+            call_rows.append([
+                Paragraph(f"<b>Confidence: {confidence}/10</b>", s["Body"]),
+                Paragraph(conf_rationale, s["Body"]),
+            ])
+        # What would change our mind
+        if change_mind:
+            call_rows.append([
+                Paragraph("<b>What would change our mind</b>", s["Body"]),
+                Paragraph(change_mind, s["Body"]),
+            ])
+        # Momentum row
+        if any(momentum_data.values()):
+            mom_str = (
+                f"1M: {_fmt_mom(momentum_data.get('price_1mo_pct'))}  |  "
+                f"3M: {_fmt_mom(momentum_data.get('price_3mo_pct'))}  |  "
+                f"YTD: {_fmt_mom(momentum_data.get('price_ytd_pct'))}  |  "
+                f"1Y: {_fmt_mom(momentum_data.get('price_1yr_pct'))}"
+            )
+            call_rows.append([
+                Paragraph("<b>Price Momentum</b>", s["Body"]),
+                Paragraph(mom_str, s["Body"]),
+            ])
+        if call_rows:
+            call_box = Table(call_rows, colWidths=[1.6 * inch, 5.4 * inch])
+            call_box.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), LIGHT_GRAY),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("LINEABOVE", (0, 0), (-1, 0), 2, ACCENT),
+                ("LINEBELOW", (0, -1), (-1, -1), 2, ACCENT),
+                ("LINEBEFORE", (1, 0), (1, -1), 0.5, colors.lightgrey),
+            ]))
+            story.append(call_box)
+            story.append(Spacer(1, 0.15 * inch))
+
     # --- KEY METRICS TABLE ---
     story.append(Paragraph("Key Financial Metrics", s["SectionHeader"]))
     metrics_data = [

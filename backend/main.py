@@ -87,6 +87,11 @@ class AnalyzeResponse(BaseModel):
     business_overview: str
     competitive_position: str
     dcf_assumptions: dict
+    # New in Phase 2
+    confidence_score: int = 5
+    confidence_rationale: str = ""
+    what_would_change_mind: str = ""
+    momentum: dict = {}
     log: list[str]
 
 
@@ -133,6 +138,10 @@ def analyze(req: AnalyzeRequest):
         business_overview=state.get("business_overview", ""),
         competitive_position=state.get("competitive_position", ""),
         dcf_assumptions=state.get("dcf_assumptions", {}),
+        confidence_score=state.get("confidence_score", 5),
+        confidence_rationale=state.get("confidence_rationale", ""),
+        what_would_change_mind=state.get("what_would_change_mind", ""),
+        momentum=state["company_data"].get("momentum", {}),
         log=state.get("log", []),
     )
 
