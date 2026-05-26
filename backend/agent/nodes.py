@@ -33,6 +33,36 @@ def _safe_num(v: float | None, fmt: str = ",.0f") -> str:
         return "N/A"
 
 
+def _split_research_sections(text: str) -> dict[str, str]:
+    """
+    Parse the researcher's combined output into a dict keyed by section name.
+    Looks for '### SECTION NAME ###' markers and captures everything between them.
+    Robust to small formatting variations from the LLM.
+    """
+    import re
+
+    if not text:
+        return {}
+
+    # Match '### NAME ###' (with flexible whitespace and trailing ### optional)
+    pattern = re.compile(r"#{2,}\s*([A-Z][A-Z\s]+?)\s*#{2,}", re.MULTILINE)
+
+    sections: dict[str, str] = {}
+    matches = list(pattern.finditer(text))
+    if not matches:
+        # No section markers found — return the whole thing as one blob so we at least
+        # don't lose the analysis. The caller will see empty individual sections.
+        return {"BUSINESS OVERVIEW": text.strip()}
+
+    for i, m in enumerate(matches):
+        section_name = m.group(1).strip()
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        sections[section_name] = text[start:end].strip()
+
+    return sections
+
+
 # ---------------------------------------------------------------------------
 # Node 1: Data Collector
 # ---------------------------------------------------------------------------
@@ -85,51 +115,54 @@ Recent News Headlines:
 """.strip()
 
     system = (
-        "You are a senior equity research analyst at a top-tier investment bank. "
-        "Write clear, professional, fact-based analysis. Use the data provided. "
-        "Avoid generic platitudes. Be specific and reference the numbers."
+        "You are a senior equity research analyst at a top-tier investment bank "
+        "(think Goldman Sachs / Morgan Stanley level). Write clear, professional, "
+        "fact-based analysis. Use the actual numbers provided. Avoid generic platitudes "
+        "like 'strong brand' or 'macro tailwinds' — be specific. Reference the data."
     )
 
-    # 1. Business overview
-    overview_prompt = f"""{context}
+    # Single combined call — returns all 4 sections at once.
+    # Uses explicit section delimiters so we can split the response cleanly.
+    combined_prompt = f"""{context}
 
-Write a concise 2-paragraph business overview. Cover:
-- What the company actually does and how it makes money (revenue model)
-- Its market position and scale
-Avoid filler. Be specific. ~150 words.
+Produce a complete qualitative analysis with FOUR sections.
+Use these EXACT section headers verbatim, each on its own line, with the content immediately after:
+
+### BUSINESS OVERVIEW ###
+Two paragraphs (~150 words total). Cover:
+- What the company does and how it actually makes money (revenue model, segments)
+- Its market position, scale, and any distinctive operating characteristics
+Reference real numbers from the data.
+
+### INVESTMENT THESIS ###
+3-5 bullet points (the bull case). Each bullet must be a specific, defensible reason to own this stock.
+Format each as "- " followed by the point. Reference actual numbers where possible.
+NO generic language like "strong brand" — be specific about WHY.
+
+### KEY RISKS ###
+3-5 bullet points (the bear case). Each must be specific to this company or its industry,
+not generic macro concerns. Reference financial data where relevant.
+Format each as "- " followed by the risk.
+
+### COMPETITIVE POSITION ###
+One paragraph (~120 words). Cover:
+- Main competitors (name them)
+- The moat (if any) and what specifically protects it
+- Where the company sits on the value chain
+
+Do not add any text before the first section header or after the final section's content.
 """
-    business_overview = call_llm(system, overview_prompt, temperature=0.2)
 
-    # 2. Investment thesis
-    thesis_prompt = f"""{context}
+    raw_research = call_llm(system, combined_prompt, temperature=0.3)
 
-Write the bull case — the investment thesis — in 3-5 bullet points.
-Each bullet should be a specific, defensible reason to own this stock.
-Reference actual numbers from the data. Avoid generic language like "strong brand."
-"""
-    investment_thesis = call_llm(system, thesis_prompt, temperature=0.3)
+    # Parse the combined response by splitting on the section markers
+    sections = _split_research_sections(raw_research)
+    business_overview = sections.get("BUSINESS OVERVIEW", "")
+    investment_thesis = sections.get("INVESTMENT THESIS", "")
+    risks = sections.get("KEY RISKS", "")
+    competitive_position = sections.get("COMPETITIVE POSITION", "")
 
-    # 3. Risks
-    risks_prompt = f"""{context}
-
-Write the bear case — key risks — in 3-5 bullet points.
-Be specific to this company and industry. Reference the financial data where relevant.
-Avoid generic risks like "macro conditions" unless they specifically apply.
-"""
-    risks = call_llm(system, risks_prompt, temperature=0.3)
-
-    # 4. Competitive position
-    comp_prompt = f"""{context}
-
-In one paragraph (~120 words), describe this company's competitive positioning:
-- Who are its main competitors?
-- What is its moat (if any)?
-- Where does it sit on the value chain?
-Be specific and concrete.
-"""
-    competitive_position = call_llm(system, comp_prompt, temperature=0.3)
-
-    log.append("[researcher] Completed 4 analytical sections")
+    log.append("[researcher] Completed 4 analytical sections in 1 combined LLM call")
     return {
         "business_overview": business_overview,
         "investment_thesis": investment_thesis,
