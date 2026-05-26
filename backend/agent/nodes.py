@@ -33,6 +33,36 @@ def _safe_num(v: float | None, fmt: str = ",.0f") -> str:
         return "N/A"
 
 
+def _fmt_money_short(v: float | None) -> str:
+    """Format a dollar value compactly: $5.19T, $96.7B, $12.3M."""
+    if v is None:
+        return "N/A"
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return "N/A"
+    abs_v = abs(v)
+    if abs_v >= 1e12:
+        return f"${v / 1e12:.2f}T"
+    if abs_v >= 1e9:
+        return f"${v / 1e9:.2f}B"
+    if abs_v >= 1e6:
+        return f"${v / 1e6:.2f}M"
+    return f"${v:,.0f}"
+
+
+def _strip_markdown(text: str) -> str:
+    """Remove markdown emphasis markers (**bold**, *italic*) the LLM sometimes injects."""
+    if not text:
+        return text
+    import re
+    # Convert **bold** to just the text (no emphasis in plain output)
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    # Remove stray single asterisks used for italics
+    text = re.sub(r"(?<!\*)\*(?!\*)([^\n*]+?)(?<!\*)\*(?!\*)", r"\1", text)
+    return text
+
+
 def _split_research_sections(text: str) -> dict[str, str]:
     """
     Parse the researcher's combined output into a dict keyed by section name.
@@ -94,7 +124,7 @@ def researcher_node(state: AgentState) -> dict[str, Any]:
     context = f"""
 Company: {profile.get('name')} ({profile.get('ticker')})
 Sector: {profile.get('sector')} / {profile.get('industry')}
-Market Cap: ${_safe_num(profile.get('market_cap'))}
+Market Cap: {_fmt_money_short(profile.get('market_cap'))}
 Employees: {_safe_num(profile.get('employees'))}
 
 Business Summary:
@@ -108,7 +138,9 @@ Key Metrics:
 - Operating Margin: {_safe_pct(metrics.get('operating_margin'))}
 - ROE: {_safe_pct(metrics.get('roe'))}
 - Debt-to-Equity: {_safe_num(metrics.get('debt_to_equity'), ',.2f')}
-- Free Cash Flow: ${_safe_num(metrics.get('free_cash_flow'))}
+- Total Revenue (TTM): {_fmt_money_short(metrics.get('total_revenue'))}
+- Free Cash Flow: {_fmt_money_short(metrics.get('free_cash_flow'))}
+- EBITDA: {_fmt_money_short(metrics.get('ebitda'))}
 
 Recent News Headlines:
 {chr(10).join(f"- {n['title']}" for n in news[:5]) or "No recent news."}
@@ -118,7 +150,12 @@ Recent News Headlines:
         "You are a senior equity research analyst at a top-tier investment bank "
         "(think Goldman Sachs / Morgan Stanley level). Write clear, professional, "
         "fact-based analysis. Use the actual numbers provided. Avoid generic platitudes "
-        "like 'strong brand' or 'macro tailwinds' — be specific. Reference the data."
+        "like 'strong brand' or 'macro tailwinds' — be specific. Reference the data. "
+        "\n\nFORMATTING RULES (critical):\n"
+        "- DO NOT use markdown emphasis (no **bold**, no *italics*). Write in plain prose.\n"
+        "- Format large dollar amounts compactly: $5.19T, $96.7B, $12.3M — never as raw digits like $5,189,482,299,927.\n"
+        "- Format percentages as 65.5% or 63.0%, not 0.655.\n"
+        "- For bullet points, just use '- ' at the start of each line — don't bold the leading phrase."
     )
 
     # Single combined call — returns all 4 sections at once.
@@ -155,12 +192,13 @@ Do not add any text before the first section header or after the final section's
 
     raw_research = call_llm(system, combined_prompt, temperature=0.3)
 
-    # Parse the combined response by splitting on the section markers
+    # Parse the combined response by splitting on the section markers,
+    # then strip any markdown emphasis the LLM may still include.
     sections = _split_research_sections(raw_research)
-    business_overview = sections.get("BUSINESS OVERVIEW", "")
-    investment_thesis = sections.get("INVESTMENT THESIS", "")
-    risks = sections.get("KEY RISKS", "")
-    competitive_position = sections.get("COMPETITIVE POSITION", "")
+    business_overview = _strip_markdown(sections.get("BUSINESS OVERVIEW", ""))
+    investment_thesis = _strip_markdown(sections.get("INVESTMENT THESIS", ""))
+    risks = _strip_markdown(sections.get("KEY RISKS", ""))
+    competitive_position = _strip_markdown(sections.get("COMPETITIVE POSITION", ""))
 
     log.append("[researcher] Completed 4 analytical sections in 1 combined LLM call")
     return {
@@ -379,8 +417,12 @@ Write a tight 3-paragraph executive summary. Paragraph 1: what the company does 
 with target price. Paragraph 2: top 2-3 reasons supporting it. Paragraph 3: top 2 risks that could
 derail the thesis. ~250 words total. Professional, sell-side tone.
 """
-    system = "You are a sell-side analyst writing for institutional investors. Concise, specific, no fluff."
-    exec_summary = call_llm(system, summary_prompt, temperature=0.3)
+    system = (
+        "You are a sell-side analyst writing for institutional investors. Concise, specific, no fluff. "
+        "DO NOT use markdown emphasis (no **bold** or *italics*). Write in plain prose. "
+        "Format large dollar amounts compactly (e.g. $5.19T, $96.7B), not as raw digits."
+    )
+    exec_summary = _strip_markdown(call_llm(system, summary_prompt, temperature=0.3))
 
     log.append(f"[writer] Final recommendation: {rec} | Target: ${target:.2f}")
     return {
