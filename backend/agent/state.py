@@ -1,10 +1,12 @@
 """
 Shared state for the 14-agent equity research workflow.
-Each agent reads what it needs, writes its own slice.
+Parallel agents need annotated reducers for fields they all write to,
+otherwise LangGraph raises INVALID_CONCURRENT_GRAPH_UPDATE.
 """
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+import operator
+from typing import Annotated, Any, Literal, TypedDict
 
 
 StockType = Literal["VALUE", "GROWTH", "OPTIONALITY", "CYCLICAL", "DISTRESSED", "BALANCED"]
@@ -20,43 +22,38 @@ class AgentState(TypedDict, total=False):
     # Classification (classifier)
     stock_type: StockType
     stock_type_rationale: str
-    valuation_framework: str  # "DCF-led", "Multiples-led", "Scenarios-led", "Asset-based"
+    valuation_framework: str
 
-    # Parallel research outputs
-    fundamentals: dict[str, Any]      # fundamentals_analyst
-    catalysts: list[dict[str, Any]]   # catalyst_scout
-    peer_analysis: dict[str, Any]     # peer_analyst — comp table + interpretation
-    technicals: dict[str, Any]        # technical_analyst — momentum read
-    macro_view: dict[str, Any]        # macro_strategist — sector dynamics
+    # Parallel research outputs - each agent writes its own slice
+    fundamentals: dict[str, Any]
+    catalysts: list[dict[str, Any]]
+    peer_analysis: dict[str, Any]
+    technicals: dict[str, Any]
+    macro_view: dict[str, Any]
 
     # Valuation triangulation
-    dcf_valuation: dict[str, Any]     # dcf_modeler
-    comps_valuation: dict[str, Any]   # comps_modeler
-    scenarios: dict[str, Any]         # scenarios_modeler — bull/base/bear
-
-    # Reality check
-    valuation_reality: dict[str, Any] # which methods are reliable, which to weight
+    dcf_valuation: dict[str, Any]
+    comps_valuation: dict[str, Any]
+    scenarios: dict[str, Any]
+    valuation_reality: dict[str, Any]
 
     # Debate
-    bull_case: dict[str, Any]         # bull_advocate
-    bear_case: dict[str, Any]         # bear_advocate
+    bull_case: dict[str, Any]
+    bear_case: dict[str, Any]
 
     # Final synthesis (chief_strategist)
-    recommendation: str  # BUY / HOLD / SELL
+    recommendation: str
     target_price: float
     target_range_low: float
     target_range_high: float
-    confidence_score: int  # 1-10
+    confidence_score: int
     confidence_rationale: str
     what_would_change_mind: str
     executive_summary: str
-    investment_thesis: str   # synthesized from bull case + fundamentals
-    key_risks: str           # synthesized from bear case + fundamentals
+    investment_thesis: str
+    key_risks: str
 
-    # Quality pass
-    quality_issues: list[str]
-    quality_passed: bool
-
-    # Bookkeeping
-    errors: list[str]
-    log: list[str]
+    # Lists that PARALLEL agents append to — must use add-reducer
+    # so LangGraph knows to concatenate instead of conflict
+    log: Annotated[list[str], operator.add]
+    errors: Annotated[list[str], operator.add]

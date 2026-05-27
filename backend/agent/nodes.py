@@ -154,7 +154,7 @@ VOICE — write like a real analyst, not an AI:
 def data_collector_node(state: AgentState) -> dict[str, Any]:
     """Fetch all company data from FMP."""
     ticker = state["ticker"]
-    log = state.get("log", []) + [f"[1/14 data_collector] Fetching {ticker}"]
+    log = [f"[1/14 data_collector] Fetching {ticker}"]
     try:
         data = fetch_company_data(ticker)
         n_periods = len(data.get("income_statement", []))
@@ -164,7 +164,7 @@ def data_collector_node(state: AgentState) -> dict[str, Any]:
         return {"company_data": data, "log": log}
     except Exception as e:
         logger.exception("Data collection failed")
-        errors = state.get("errors", []) + [f"Data collection: {e}"]
+        errors = [f"Data collection: {e}"]
         return {"errors": errors, "log": log}
 
 
@@ -174,7 +174,7 @@ def data_collector_node(state: AgentState) -> dict[str, Any]:
 
 def classifier_node(state: AgentState) -> dict[str, Any]:
     """Classify the stock and pick a valuation framework."""
-    log = state.get("log", []) + ["[2/14 classifier] Classifying stock type"]
+    log = ["[2/14 classifier] Classifying stock type"]
     data = state.get("company_data") or {}
     profile = data.get("profile", {})
     metrics = data.get("metrics", {})
@@ -248,7 +248,7 @@ Guidance on framework selection:
 
 def fundamentals_analyst_node(state: AgentState) -> dict[str, Any]:
     """Deep dive on business model and unit economics."""
-    log = state.get("log", []) + ["[3/14 fundamentals] Analyzing business model"]
+    log = ["[3/14 fundamentals] Analyzing business model"]
     data = state.get("company_data") or {}
     profile = data.get("profile", {})
     metrics = data.get("metrics", {})
@@ -328,7 +328,7 @@ What does the trend imply about the next 2-3 years?
 
 def catalyst_scout_node(state: AgentState) -> dict[str, Any]:
     """Identify real catalysts from news + earnings dates."""
-    log = state.get("log", []) + ["[4/14 catalyst_scout] Scanning for catalysts"]
+    log = ["[4/14 catalyst_scout] Scanning for catalysts"]
     data = state.get("company_data") or {}
     profile = data.get("profile", {})
     news = data.get("news", []) or []
@@ -413,7 +413,7 @@ Rules:
 
 def peer_analyst_node(state: AgentState) -> dict[str, Any]:
     """Build a comparable-companies table and interpret the multiples."""
-    log = state.get("log", []) + ["[5/14 peer_analyst] Building comp table"]
+    log = ["[5/14 peer_analyst] Building comp table"]
     data = state.get("company_data") or {}
     profile = data.get("profile", {})
     metrics = data.get("metrics", {})
@@ -510,7 +510,7 @@ Write ONE paragraph (~120 words):
 
 def technical_analyst_node(state: AgentState) -> dict[str, Any]:
     """Read the tape — momentum, vs 52w range, volatility context."""
-    log = state.get("log", []) + ["[6/14 technical_analyst] Reading the tape"]
+    log = ["[6/14 technical_analyst] Reading the tape"]
     data = state.get("company_data") or {}
     profile = data.get("profile", {})
     metrics = data.get("metrics", {})
@@ -578,7 +578,7 @@ Avoid clichés like "consolidating" or "testing support". Be specific:
 
 def macro_strategist_node(state: AgentState) -> dict[str, Any]:
     """Macro/sector context for the call."""
-    log = state.get("log", []) + ["[7/14 macro_strategist] Sector dynamics"]
+    log = ["[7/14 macro_strategist] Sector dynamics"]
     data = state.get("company_data") or {}
     profile = data.get("profile", {})
 
@@ -613,7 +613,7 @@ Be concrete. "Fed cuts of 75bps priced in for next year" beats "supportive rate 
 
 def dcf_modeler_node(state: AgentState) -> dict[str, Any]:
     """Build DCF assumptions (LLM) + compute valuation (deterministic Python)."""
-    log = state.get("log", []) + ["[8/14 dcf_modeler] Building DCF"]
+    log = ["[8/14 dcf_modeler] Building DCF"]
     data = state.get("company_data") or {}
     profile = data.get("profile", {})
     metrics = data.get("metrics", {})
@@ -743,7 +743,7 @@ def _compute_dcf(base_revenue, net_debt, shares, current_price, assumptions):
 
 def comps_modeler_node(state: AgentState) -> dict[str, Any]:
     """Apply peer median multiples to subject's financials to derive comp-based price."""
-    log = state.get("log", []) + ["[9/14 comps_modeler] Comp-based valuation"]
+    log = ["[9/14 comps_modeler] Comp-based valuation"]
     data = state.get("company_data") or {}
     metrics = data.get("metrics", {})
     peer_analysis = state.get("peer_analysis") or {}
@@ -815,7 +815,7 @@ def comps_modeler_node(state: AgentState) -> dict[str, Any]:
 
 def scenarios_modeler_node(state: AgentState) -> dict[str, Any]:
     """Build bull/base/bear scenarios with explicit assumption changes."""
-    log = state.get("log", []) + ["[10/14 scenarios_modeler] Building scenarios"]
+    log = ["[10/14 scenarios_modeler] Building scenarios"]
     data = state.get("company_data") or {}
     profile = data.get("profile", {})
     metrics = data.get("metrics", {})
@@ -886,7 +886,7 @@ def scenarios_modeler_node(state: AgentState) -> dict[str, Any]:
 
 def reality_check_node(state: AgentState) -> dict[str, Any]:
     """Decide which valuation methods are credible for THIS stock."""
-    log = state.get("log", []) + ["[11/14 reality_check] Weighing methods"]
+    log = ["[11/14 reality_check] Weighing methods"]
     stock_type = state.get("stock_type", "BALANCED")
     framework = state.get("valuation_framework", "DCF-led")
     dcf = state.get("dcf_valuation", {})
@@ -972,7 +972,7 @@ def reality_check_node(state: AgentState) -> dict[str, Any]:
 
 def bull_advocate_node(state: AgentState) -> dict[str, Any]:
     """Adversarial agent: argue the strongest bull case."""
-    log = state.get("log", []) + ["[12/14 bull_advocate] Building bull case"]
+    log = ["[12/14 bull_advocate] Building bull case"]
     data = state.get("company_data") or {}
     profile = data.get("profile", {})
     metrics = data.get("metrics", {})
@@ -1020,7 +1020,7 @@ End with one sentence: "The bull case wins if [specific condition]"
 
 def bear_advocate_node(state: AgentState) -> dict[str, Any]:
     """Adversarial agent: argue the strongest bear case."""
-    log = state.get("log", []) + ["[13/14 bear_advocate] Building bear case"]
+    log = ["[13/14 bear_advocate] Building bear case"]
     data = state.get("company_data") or {}
     profile = data.get("profile", {})
     metrics = data.get("metrics", {})
@@ -1067,7 +1067,7 @@ End with: "The bear case wins if [specific condition]"
 
 def chief_strategist_node(state: AgentState) -> dict[str, Any]:
     """Synthesize everything, make the call."""
-    log = state.get("log", []) + ["[14/14 chief_strategist] Final synthesis"]
+    log = ["[14/14 chief_strategist] Final synthesis"]
     data = state.get("company_data") or {}
     profile = data.get("profile", {})
     metrics = data.get("metrics", {})
