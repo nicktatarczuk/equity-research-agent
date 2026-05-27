@@ -11,7 +11,6 @@
 </head>
 <body>
 
-  <!-- Top bar -->
   <header class="topbar">
     <div class="logo">
       <span class="logo-mark"></span>
@@ -23,14 +22,13 @@
     </nav>
   </header>
 
-  <!-- Hero / input -->
   <main class="container">
     <section class="hero">
-      <div class="eyebrow">AI-POWERED EQUITY RESEARCH</div>
-      <h1>Institutional-grade reports.<br/><span class="accent">In 30 seconds.</span></h1>
+      <div class="eyebrow">14-AGENT EQUITY RESEARCH</div>
+      <h1>A research desk in 60 seconds. <span class="accent">For any ticker.</span></h1>
       <p class="subtitle">
-        Enter a ticker. A multi-step AI agent fetches financials, builds a DCF model,
-        and writes a full research report — generating a PDF, pitch deck, and Excel model.
+        Specialized AI agents handle fundamentals, catalysts, peers, technicals, macro, valuation, and debate —
+        synthesized into a real research report with PDF, deck, and Excel model.
       </p>
 
       <form id="analyze-form" class="search-bar">
@@ -56,27 +54,28 @@
         <button class="chip" data-ticker="AAPL">AAPL</button>
         <button class="chip" data-ticker="MSFT">MSFT</button>
         <button class="chip" data-ticker="NVDA">NVDA</button>
-        <button class="chip" data-ticker="GOOGL">GOOGL</button>
         <button class="chip" data-ticker="TSLA">TSLA</button>
+        <button class="chip" data-ticker="GOOGL">GOOGL</button>
       </div>
     </section>
 
-    <!-- Loading state -->
+    <!-- Loading -->
     <section id="loading" class="loading hidden">
       <div class="spinner"></div>
       <div class="loading-text">
         <h3 id="loading-title">Working...</h3>
-        <p id="loading-step">Initializing agent</p>
+        <p id="loading-step">Spinning up agents</p>
       </div>
       <ol class="agent-steps">
         <li id="step-1"><span class="dot"></span>Collecting financial data</li>
-        <li id="step-2"><span class="dot"></span>Analyzing business & risks</li>
-        <li id="step-3"><span class="dot"></span>Building DCF valuation</li>
-        <li id="step-4"><span class="dot"></span>Writing recommendation</li>
+        <li id="step-2"><span class="dot"></span>Classifying stock type</li>
+        <li id="step-3"><span class="dot"></span>5 research agents in parallel</li>
+        <li id="step-4"><span class="dot"></span>Triangulating valuation (DCF, comps, scenarios)</li>
+        <li id="step-5"><span class="dot"></span>Bull vs bear debate</li>
+        <li id="step-6"><span class="dot"></span>Chief strategist synthesizing</li>
       </ol>
     </section>
 
-    <!-- Error state -->
     <section id="error" class="error-box hidden">
       <strong>Error:</strong>
       <span id="error-msg"></span>
@@ -84,7 +83,7 @@
 
     <!-- Results -->
     <section id="results" class="results hidden">
-      <!-- Header card -->
+      <!-- Header -->
       <div class="result-header">
         <div>
           <div class="result-ticker" id="r-ticker">—</div>
@@ -97,6 +96,13 @@
         </div>
       </div>
 
+      <!-- Classification strip -->
+      <div class="class-strip">
+        <span class="cs-item"><span class="cs-label">Type:</span> <strong id="r-type">—</strong></span>
+        <span class="cs-item"><span class="cs-label">Framework:</span> <strong id="r-framework">—</strong></span>
+        <span class="cs-item" id="cs-range" style="display:none"><span class="cs-label">Range:</span> <strong id="r-range">—</strong></span>
+      </div>
+
       <!-- KPI grid -->
       <div class="kpi-grid">
         <div class="kpi">
@@ -104,11 +110,11 @@
           <div class="kpi-value" id="k-current">—</div>
         </div>
         <div class="kpi highlight">
-          <div class="kpi-label">DCF Target</div>
+          <div class="kpi-label">Target</div>
           <div class="kpi-value" id="k-target">—</div>
         </div>
         <div class="kpi">
-          <div class="kpi-label">Implied Upside</div>
+          <div class="kpi-label">Upside</div>
           <div class="kpi-value" id="k-upside">—</div>
         </div>
         <div class="kpi">
@@ -117,7 +123,7 @@
         </div>
       </div>
 
-      <!-- Momentum strip -->
+      <!-- Momentum -->
       <div class="momentum-strip" id="momentum-strip">
         <div class="mom-item"><span class="mom-label">1M</span><span class="mom-value" id="m-1mo">—</span></div>
         <div class="mom-item"><span class="mom-label">3M</span><span class="mom-value" id="m-3mo">—</span></div>
@@ -125,50 +131,53 @@
         <div class="mom-item"><span class="mom-label">1Y</span><span class="mom-value" id="m-1yr">—</span></div>
       </div>
 
-      <!-- Download cards -->
+      <!-- Downloads -->
       <div class="downloads">
         <a href="#" id="d-pdf" class="dl-card">
           <div class="dl-icon">📄</div>
-          <div>
-            <div class="dl-title">Research Report</div>
-            <div class="dl-sub">Full PDF • multi-page</div>
-          </div>
+          <div><div class="dl-title">Research Report</div><div class="dl-sub">Full PDF · multi-section</div></div>
         </a>
         <a href="#" id="d-deck" class="dl-card">
           <div class="dl-icon">📊</div>
-          <div>
-            <div class="dl-title">Pitch Deck</div>
-            <div class="dl-sub">PowerPoint • 7 slides</div>
-          </div>
+          <div><div class="dl-title">Pitch Deck</div><div class="dl-sub">PowerPoint · 7 slides</div></div>
         </a>
         <a href="#" id="d-model" class="dl-card">
           <div class="dl-icon">📈</div>
-          <div>
-            <div class="dl-title">DCF Model</div>
-            <div class="dl-sub">Excel • editable formulas</div>
-          </div>
+          <div><div class="dl-title">DCF Model</div><div class="dl-sub">Excel · live formulas</div></div>
         </a>
       </div>
 
       <!-- Executive summary -->
       <div class="card">
-        <h2>Executive Summary</h2>
+        <h2>The Call</h2>
         <div class="prose" id="r-summary"></div>
       </div>
 
-      <!-- What would change our mind -->
+      <!-- Confidence + what would change mind -->
       <div class="card change-mind" id="change-mind-card">
         <h3>What Would Change Our Mind</h3>
         <p class="prose" id="r-change-mind">—</p>
       </div>
 
-      <!-- Catalysts -->
-      <div class="card catalysts-card hidden" id="catalysts-card">
-        <h2>Near-Term Catalysts</h2>
-        <div id="r-catalysts"></div>
+      <!-- Scenarios -->
+      <div class="card scenarios-card hidden" id="scenarios-card">
+        <h2>Bull · Base · Bear</h2>
+        <div class="scenarios-grid" id="r-scenarios"></div>
       </div>
 
-      <!-- Two-col: thesis / risks -->
+      <!-- Bull vs Bear debate -->
+      <div class="two-col" id="debate-row">
+        <div class="card debate-bull" id="bull-card">
+          <h2 class="green-h">The Bull</h2>
+          <div class="prose" id="r-bull"></div>
+        </div>
+        <div class="card debate-bear" id="bear-card">
+          <h2 class="red-h">The Bear</h2>
+          <div class="prose" id="r-bear"></div>
+        </div>
+      </div>
+
+      <!-- Thesis & risks (synthesized) -->
       <div class="two-col">
         <div class="card">
           <h2 class="green-h">Investment Thesis</h2>
@@ -180,17 +189,41 @@
         </div>
       </div>
 
-      <!-- Overview & competitive position -->
-      <div class="card">
+      <!-- Catalysts -->
+      <div class="card catalysts-card hidden" id="catalysts-card">
+        <h2>Near-Term Catalysts</h2>
+        <div id="r-catalysts"></div>
+      </div>
+
+      <!-- Peer comp -->
+      <div class="card peer-card hidden" id="peer-card">
+        <h2>Peer Comparison</h2>
+        <div class="peer-table-wrap"><table class="peer-table" id="peer-table"></table></div>
+        <p class="prose" id="r-peer-interp"></p>
+      </div>
+
+      <!-- Business overview -->
+      <div class="card" id="overview-card">
         <h2>Business Overview</h2>
         <div class="prose" id="r-overview"></div>
       </div>
-      <div class="card">
-        <h2>Competitive Positioning</h2>
-        <div class="prose" id="r-competitive"></div>
+
+      <div class="card" id="moat-card">
+        <h2>Moat &amp; Margin Trajectory</h2>
+        <div class="prose" id="r-moat"></div>
+        <div class="prose" id="r-margin"></div>
       </div>
 
-      <!-- Agent trace -->
+      <div class="card" id="tech-card">
+        <h2>Market Positioning</h2>
+        <div class="prose" id="r-tech"></div>
+      </div>
+
+      <div class="card" id="macro-card">
+        <h2>Macro &amp; Sector Context</h2>
+        <div class="prose" id="r-macro"></div>
+      </div>
+
       <details class="card trace">
         <summary>Agent execution trace</summary>
         <ol id="r-log"></ol>
@@ -199,33 +232,27 @@
 
     <!-- How it works -->
     <section id="how" class="how-section">
-      <h2>How the agent works</h2>
-      <div class="how-grid">
-        <div class="how-step">
-          <div class="how-num">1</div>
-          <h3>Data Collector</h3>
-          <p>Pulls financials, price history, and news from Yahoo Finance for the ticker.</p>
-        </div>
-        <div class="how-step">
-          <div class="how-num">2</div>
-          <h3>Researcher</h3>
-          <p>Gemini analyzes the business model, competitive position, bull case, and risks.</p>
-        </div>
-        <div class="how-step">
-          <div class="how-num">3</div>
-          <h3>Analyst</h3>
-          <p>Builds DCF assumptions grounded in real financials, then computes valuation.</p>
-        </div>
-        <div class="how-step">
-          <div class="how-num">4</div>
-          <h3>Writer</h3>
-          <p>Synthesizes everything into an executive summary and BUY/HOLD/SELL call.</p>
-        </div>
+      <h2>The 14-agent pipeline</h2>
+      <div class="how-grid-2">
+        <div class="how-step"><div class="how-num">1</div><h3>Data Collector</h3><p>Pulls financials, news, peers, insider trades, and price history from Financial Modeling Prep.</p></div>
+        <div class="how-step"><div class="how-num">2</div><h3>Classifier</h3><p>Identifies stock type (Value, Growth, Optionality, etc.) and picks the right valuation framework.</p></div>
+        <div class="how-step"><div class="how-num">3</div><h3>Fundamentals</h3><p>Business model, moat, margin trajectory analysis.</p></div>
+        <div class="how-step"><div class="how-num">4</div><h3>Catalyst Scout</h3><p>Real catalysts from news + upcoming earnings dates.</p></div>
+        <div class="how-step"><div class="how-num">5</div><h3>Peer Analyst</h3><p>Pulls 3-5 peers, builds comp table, interprets premium/discount.</p></div>
+        <div class="how-step"><div class="how-num">6</div><h3>Technicals</h3><p>Reads price action, momentum, and proximity to 52w range.</p></div>
+        <div class="how-step"><div class="how-num">7</div><h3>Macro Strategist</h3><p>Sector cycle, rate environment, top-down call.</p></div>
+        <div class="how-step"><div class="how-num">8</div><h3>DCF Modeler</h3><p>5-year DCF anchored to historical FCF margins. Python deterministic math.</p></div>
+        <div class="how-step"><div class="how-num">9</div><h3>Comps Modeler</h3><p>Applies peer median multiples to subject's financials.</p></div>
+        <div class="how-step"><div class="how-num">10</div><h3>Scenarios</h3><p>Bull/Base/Bear cases with explicit assumption flexing.</p></div>
+        <div class="how-step"><div class="how-num">11</div><h3>Reality Check</h3><p>Weights methods by stock type. De-weights DCF when it gives nonsense.</p></div>
+        <div class="how-step"><div class="how-num">12</div><h3>Bull Advocate</h3><p>Aggressive long case. Adversarial role.</p></div>
+        <div class="how-step"><div class="how-num">13</div><h3>Bear Advocate</h3><p>Aggressive short case. Adversarial role.</p></div>
+        <div class="how-step"><div class="how-num">14</div><h3>Chief Strategist</h3><p>Synthesizes everything, makes the final call, writes the report.</p></div>
       </div>
     </section>
 
     <footer>
-      <p>Built with LangGraph, Gemini, FastAPI, and yfinance. <strong>For educational use only — not investment advice.</strong></p>
+      <p>Built with LangGraph, Gemini 2.5 Flash, FastAPI, and Financial Modeling Prep. <strong>For educational use only — not investment advice.</strong></p>
     </footer>
   </main>
 

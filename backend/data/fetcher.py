@@ -188,6 +188,31 @@ def fetch_company_data(ticker: str) -> dict[str, Any]:
         hist_resp = _get("historical-price-eod/light", {"symbol": ticker})
     hist_data = hist_resp if isinstance(hist_resp, list) else (hist_resp.get("historical", []) if isinstance(hist_resp, dict) else [])
 
+    # 9. Upcoming earnings (for catalyst calendar) — free tier
+    earnings_resp = _get("earnings", {"symbol": ticker, "limit": 4})
+    upcoming_earnings = earnings_resp if isinstance(earnings_resp, list) else []
+
+    # 10. Insider trading (last 30 transactions) — free tier
+    insider_resp = _get("insider-trading", {"symbol": ticker, "limit": 30, "page": 0})
+    insider_trades = insider_resp if isinstance(insider_resp, list) else []
+
+    # 11. Short interest snapshot (often premium, fall back gracefully)
+    short_resp = _get("short-interest", {"symbol": ticker})
+    short_data = short_resp[0] if isinstance(short_resp, list) and short_resp else (short_resp if isinstance(short_resp, dict) else {})
+
+    # 12. Stock peers — used by peer_analyst
+    peers_resp = _get("stock-peers", {"symbol": ticker})
+    if isinstance(peers_resp, list) and peers_resp:
+        first = peers_resp[0]
+        if isinstance(first, dict):
+            peer_tickers = first.get("peersList", []) or []
+        else:
+            peer_tickers = []
+    else:
+        peer_tickers = []
+    # Limit to 5 peers
+    peer_tickers = [t for t in peer_tickers if t and t != ticker][:5]
+
     # --- Build profile dict ---
     profile = {
         "ticker": ticker,
@@ -374,12 +399,46 @@ def fetch_company_data(ticker: str) -> dict[str, Any]:
         "cash_flow": cash_flow_list,
         "price_history": [],
         "news": news,
-        # New: anchors for the analyst to use in DCF assumptions
+        # Phase 2 anchors
         "historical_anchors": {
             "avg_fcf_margin_3y": avg_historical_fcf_margin,
             "avg_revenue_growth_3y": avg_historical_rev_growth,
         },
-        # New: price momentum percentages (1mo, 3mo, YTD, 1yr)
         "momentum": momentum,
+        # Phase 3 additions for multi-agent system
+        "upcoming_earnings": upcoming_earnings,
+        "insider_trades": insider_trades,
+        "short_data": short_data,
+        "peer_tickers": peer_tickers,
         "fetched_at": datetime.utcnow().isoformat(),
     }
+
+
+def fetch_peer_snapshot(tickers: list[str]) -> list[dict]:
+    """
+    Fetch lightweight valuation snapshots for a list of peer tickers.
+    Returns one row per peer with the basics needed for a comps table.
+    """
+    out = []
+    for t in tickers[:5]:
+        try:
+            profile_resp = _get("profile", {"symbol": t})
+            ratios_resp = _get("key-metrics-ttm", {"symbol": t})
+            if not profile_resp or not isinstance(profile_resp, list):
+                continue
+            p = profile_resp[0]
+            m = ratios_resp[0] if isinstance(ratios_resp, list) and ratios_resp else {}
+            out.append({
+                "ticker": t,
+                "name": _safe(p, "companyName", t),
+                "market_cap": _safe(p, "marketCap") or _safe(p, "mktCap"),
+                "price": _safe(p, "price"),
+                "pe": _safe(m, "peRatioTTM"),
+                "ev_ebitda": _safe(m, "enterpriseValueOverEBITDATTM") or _safe(m, "evToEBITDATTM"),
+                "ev_sales": _safe(m, "evToSalesTTM"),
+                "pb": _safe(m, "pbRatioTTM"),
+            })
+        except Exception as e:
+            logger.warning(f"Peer fetch failed for {t}: {e}")
+            continue
+    return out
